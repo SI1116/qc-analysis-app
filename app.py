@@ -6,7 +6,10 @@ import matplotlib.pyplot as plt
 import matplotlib
 import os
 
-matplotlib.rcParams['font.family'] = 'Yu Gothic'
+try:
+    matplotlib.rcParams['font.family'] = 'Yu Gothic'
+except:
+    pass
 st.set_page_config(page_title="QC分析ツール", layout="wide")
 
 

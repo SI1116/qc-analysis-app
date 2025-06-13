@@ -10,8 +10,8 @@ try:
     matplotlib.rcParams['font.family'] = 'Yu Gothic'
 except:
     pass
-
 st.set_page_config(page_title="QC分析ツール", layout="wide")
+
 
 # --- ユーティリティ関数 ---
 def parse_time(t):
@@ -44,6 +44,7 @@ def add_highlight_col(df):
     if "QC結果" in df.columns:
         df["QC結果"] = df["QC結果"].apply(lambda x: "🟥 NG" if x == "NG" else "OK")
     return df
+
 
 # --- UI ---
 st.sidebar.header("① ファイル選択")
@@ -126,7 +127,6 @@ if uploaded:
         else:
             st.write(f"**NG件数：{(df['QC結果'] == 'NG').sum()} / {len(df)}**")
 
-        # ✅ 詳細データ（手動表示）
         st.subheader("詳細データ")
         show_only_ng = st.checkbox("⚠ NG（規格外）行のみ表示する", value=False)
 
@@ -139,12 +139,11 @@ if uploaded:
         ng_rate = (ng_count / filtered_count * 100) if filtered_count > 0 else 0.0
         st.markdown(f"**不良率：{ng_rate:.2f}% ({ng_count} / {filtered_count})**")
 
-        if st.button("📋 詳細データを表示"):
-            df_view = add_highlight_col(df_view)
-            st.dataframe(df_view, height=600, use_container_width=True)
+        df_view = add_highlight_col(df_view)
+        st.dataframe(df_view, height=600, use_container_width=True)
 
-            csv = df.to_csv(index=False).encode("utf-8-sig")
-            st.download_button("分析結果をCSVでダウンロード", csv, file_name="qc_result.csv", mime="text/csv")
+        csv = df.to_csv(index=False).encode("utf-8-sig")
+        st.download_button("分析結果をCSVでダウンロード", csv, file_name="qc_result.csv", mime="text/csv")
 
         st.subheader("📊 統計・分布分析")
         for label, actual_col in dynamic_targets:

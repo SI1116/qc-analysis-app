@@ -192,7 +192,7 @@ if uploaded:
 
             plt.rcParams['font.family'] = font_prop.get_name()
             fig, ax = plt.subplots(figsize=(7, 3.5))
-            ax.hist(values, bins="auto", alpha=0.7, edgecolor='black')
+            ax.hist(values, bins="30", alpha=0.7, edgecolor='black')
             ax.axvline(mean, color='blue', linestyle='--', label='Ave')
             ax.axvline(lower_3σ, color='orange', linestyle=':', label='-3σ')
             ax.axvline(upper_3σ, color='orange', linestyle=':', label='+3σ')

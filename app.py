@@ -1,18 +1,19 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import re
 import matplotlib.pyplot as plt
 import matplotlib
 import platform
+import os  # ← 忘れずにインポート
+import re
 
-# --- 日本語フォント設定（WindowsとRender両対応） ---
+# --- フォント設定（Render/Linux用とWindows用を自動切替） ---
 if platform.system() == "Windows":
-    matplotlib.rcParams['font.family'] = 'MS Gothic'
+    matplotlib.rcParams["font.family"] = "MS Gothic"
 else:
-    matplotlib.rcParams['font.family'] = 'IPAexGothic'
+    matplotlib.rcParams["font.family"] = "IPAexGothic"
 
-plt.rcParams['font.family'] = matplotlib.rcParams['font.family']
+plt.rcParams['font.family'] = matplotlib.rcParams["font.family"]
 
 st.set_page_config(page_title="QC分析ツール", layout="wide")
 
@@ -58,9 +59,9 @@ def load_excel(uploaded_file, ext):
     spec_df.columns = spec_df.columns.str.strip()
     return df, spec_df
 
-# --- UI開始 ---
+# --- UI ---
 st.sidebar.header("① ファイル選択")
-uploaded = st.sidebar.file_uploader("Excelファイル (.xlsx, .xlsm, .xls)", type=["xls", "xlsx", "xlsm"])
+uploaded = st.sidebar.file_uploader("Excelファイル (.xls, .xlsx, .xlsm)", type=["xls", "xlsx", "xlsm"])
 
 if uploaded:
     ext = os.path.splitext(uploaded.name)[1].lower()
@@ -208,5 +209,7 @@ if uploaded:
                 ax.set_title(f"{label} のロット推移")
                 ax.grid(True)
                 st.pyplot(fig)
+
 else:
     st.info("左サイドバーから .xls, .xlsx, .xlsm ファイルをアップロードしてください。")
+

@@ -28,19 +28,21 @@ def configure_japanese_font():
                 zip_ref.extractall(font_dir)
 
     if os.path.exists(font_path):
+        font_prop = fm.FontProperties(fname=font_path)
+        font_name = font_prop.get_name()
         fm.fontManager.addfont(font_path)
-        font_name = fm.FontProperties(fname=font_path).get_name()
         matplotlib.rcParams['font.family'] = font_name
         plt.rcParams['font.family'] = font_name
-        font_prop = fm.FontProperties(fname=font_path)
     else:
+        font_prop = fm.FontProperties()
         matplotlib.rcParams['font.family'] = 'sans-serif'
         plt.rcParams['font.family'] = 'sans-serif'
-        font_prop = fm.FontProperties()
 
-    cache_dir = matplotlib.get_cachedir()
-    shutil.rmtree(cache_dir, ignore_errors=True)
-    matplotlib.font_manager._rebuild()
+    try:
+        cache_dir = matplotlib.get_cachedir()
+        shutil.rmtree(cache_dir, ignore_errors=True)
+    except Exception:
+        pass
 
 configure_japanese_font()
 st.set_page_config(page_title="QC分析ツール", layout="wide")
@@ -77,7 +79,6 @@ def add_highlight_col(df):
         df["QC結果"] = df["QC結果"].apply(lambda x: "🟥 NG" if x == "NG" else "OK")
     return df
 
-# --- Excel読込関数 ---
 @st.cache_data(show_spinner="読み込み中…")
 def load_excel(uploaded_file, ext):
     engine = "openpyxl" if ext in [".xlsx", ".xlsm"] else "xlrd"
@@ -205,7 +206,6 @@ if uploaded:
                 x_max = st.number_input(f"{label} x軸最大", value=float(round(default_max + 0.5, 2)),
                                         step=0.1, format="%.2f", key=f"{actual_col}_xmax")
 
-            # 再指定して確実に反映させる
             plt.rcParams['font.family'] = font_prop.get_name()
             fig, ax = plt.subplots(figsize=(7, 3.5))
             ax.hist(values, bins="auto", alpha=0.7, edgecolor='black')

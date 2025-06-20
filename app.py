@@ -4,16 +4,38 @@ import numpy as np
 import re
 import matplotlib.pyplot as plt
 import matplotlib
+import matplotlib.font_manager as fm
 import os
+import platform
 
-# フォント設定（エラー対策つき）
-try:
-    matplotlib.rcParams['font.family'] = 'Yu Gothic'
-except:
-    pass
+# --- 日本語フォントの自動切替設定（Windows/Render両対応） ---
+def configure_japanese_font():
+    if platform.system() == "Windows":
+        font_path = "C:/Windows/Fonts/msgothic.ttc"
+    else:
+        font_dir = "/tmp/fonts"
+        font_path = os.path.join(font_dir, "ipaexg.ttf")
+        if not os.path.exists(font_path):
+            import urllib.request
+            import zipfile
+            os.makedirs(font_dir, exist_ok=True)
+            zip_url = "https://moji.or.jp/wp-content/ipafont/IPAexfont/ipaexg00401.zip"
+            zip_path = os.path.join(font_dir, "ipa.zip")
+            urllib.request.urlretrieve(zip_url, zip_path)
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(font_dir)
 
+    if os.path.exists(font_path):
+        fm.fontManager.addfont(font_path)
+        font_name = fm.FontProperties(fname=font_path).get_name()
+        matplotlib.rcParams['font.family'] = font_name
+        plt.rcParams['font.family'] = font_name
+    else:
+        matplotlib.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['font.family'] = 'sans-serif'
+
+configure_japanese_font()
 st.set_page_config(page_title="QC分析ツール", layout="wide")
-
 
 # --- ユーティリティ関数 ---
 def parse_time(t):
@@ -47,8 +69,7 @@ def add_highlight_col(df):
         df["QC結果"] = df["QC結果"].apply(lambda x: "🟥 NG" if x == "NG" else "OK")
     return df
 
-
-# --- キャッシュ付き読込関数（1. 読込高速化）---
+# --- キャッシュ付きExcel読込関数 ---
 @st.cache_data(show_spinner="読み込み中…")
 def load_excel(uploaded_file, ext):
     engine = "openpyxl" if ext in [".xlsx", ".xlsm"] else "xlrd"
@@ -59,8 +80,7 @@ def load_excel(uploaded_file, ext):
     spec_df.columns = spec_df.columns.str.strip()
     return df, spec_df
 
-
-# --- UI ---
+# --- UI表示 ---
 st.sidebar.header("① ファイル選択")
 uploaded = st.sidebar.file_uploader("Excelファイル (.xlsx, .xlsm, .xls)", type=["xls", "xlsx", "xlsm"])
 
@@ -68,7 +88,6 @@ if uploaded:
     ext = os.path.splitext(uploaded.name)[1].lower()
     df, spec_df = load_excel(uploaded, ext)
 
-    # 時間変換列
     if "水2L濾過時間" in df.columns:
         df["水2L濾過時間_sec"] = df["水2L濾過時間"].apply(parse_time)
         df["水2L濾過時間_mmss"] = df["水2L濾過時間_sec"].apply(to_minsec)
@@ -80,7 +99,6 @@ if uploaded:
     if not sel_products:
         st.warning("製品名が選択されていません。左のサイドバーから製品名を選択してください。")
     else:
-        # --- 2. フィルタ後に処理対象を絞る ---
         df_filtered = df[df["製品名称"].isin(sel_products)]
 
         lot_mode = st.sidebar.checkbox("ロットNo別で集計・表示する")
@@ -127,7 +145,6 @@ if uploaded:
             else:
                 st.sidebar.warning("規格マスタに製品が見つかりません。")
 
-        # ✅ QC判定（対象行のみ）
         df_filtered["QC結果"] = df_filtered.apply(qc_judge, axis=1, args=(specs,))
 
         st.header("QC分析結果")
@@ -172,35 +189,27 @@ if uploaded:
                 st.markdown(f"- 平均: **{mean:.2f}**, 標準偏差: **{std:.2f}**")
                 st.markdown(f"- 3σ範囲: {lower_3σ:.2f} ～ {upper_3σ:.2f}")
 
-            key_show = f"show_plot_{actual_col}"
-            if key_show not in st.session_state:
-                st.session_state[key_show] = False
+            with st.expander(f"📐 {label} のx軸表示範囲を調整", expanded=False):
+                default_min = min(values.min(), lower_3σ, lo if lo is not None else values.min())
+                default_max = max(values.max(), upper_3σ, hi if hi is not None else values.max())
+                x_min = st.number_input(f"{label} x軸最小", value=float(round(default_min - 0.5, 2)),
+                                        step=0.1, format="%.2f", key=f"{actual_col}_xmin")
+                x_max = st.number_input(f"{label} x軸最大", value=float(round(default_max + 0.5, 2)),
+                                        step=0.1, format="%.2f", key=f"{actual_col}_xmax")
 
-            if st.button(f"{label} の分布グラフを描画", key=f"btn_{actual_col}"):
-                st.session_state[key_show] = True
-
-            if st.session_state[key_show]:
-                with st.expander(f"📐 {label} のx軸表示範囲を調整", expanded=False):
-                    default_min = min(values.min(), lower_3σ, lo if lo is not None else values.min())
-                    default_max = max(values.max(), upper_3σ, hi if hi is not None else values.max())
-                    x_min = st.number_input(f"{label} x軸最小", value=float(round(default_min - 0.5, 2)),
-                                            step=0.1, format="%.2f", key=f"{actual_col}_xmin")
-                    x_max = st.number_input(f"{label} x軸最大", value=float(round(default_max + 0.5, 2)),
-                                            step=0.1, format="%.2f", key=f"{actual_col}_xmax")
-
-                fig, ax = plt.subplots(figsize=(7, 3.5))
-                ax.hist(values, bins="auto", alpha=0.7, edgecolor='black')
-                ax.axvline(mean, color='blue', linestyle='--', label='平均')
-                ax.axvline(lower_3σ, color='orange', linestyle=':', label='-3σ')
-                ax.axvline(upper_3σ, color='orange', linestyle=':', label='+3σ')
-                if lo is not None:
-                    ax.axvline(lo, color='red', linestyle='-', label='規格下限')
-                if hi is not None:
-                    ax.axvline(hi, color='red', linestyle='-', label='規格上限')
-                ax.set_xlim(x_min, x_max)
-                ax.set_title(f"{label} 分布（選択ロット）")
-                ax.legend()
-                st.pyplot(fig)
+            fig, ax = plt.subplots(figsize=(7, 3.5))
+            ax.hist(values, bins="auto", alpha=0.7, edgecolor='black')
+            ax.axvline(mean, color='blue', linestyle='--', label='平均')
+            ax.axvline(lower_3σ, color='orange', linestyle=':', label='-3σ')
+            ax.axvline(upper_3σ, color='orange', linestyle=':', label='+3σ')
+            if lo is not None:
+                ax.axvline(lo, color='red', linestyle='-', label='規格下限')
+            if hi is not None:
+                ax.axvline(hi, color='red', linestyle='-', label='規格上限')
+            ax.set_xlim(x_min, x_max)
+            ax.set_title(f"{label} 分布（選択ロット）")
+            ax.legend()
+            st.pyplot(fig)
 
         if lot_mode:
             st.subheader("📈 ロット順推移（折れ線グラフ）")
@@ -208,24 +217,16 @@ if uploaded:
                 if actual_col not in df_filtered.columns or df_filtered[actual_col].dropna().empty:
                     continue
 
-                key_line = f"show_line_{actual_col}"
-                if key_line not in st.session_state:
-                    st.session_state[key_line] = False
+                df_plot = df_filtered[["ロットNo", actual_col]].dropna().copy()
+                df_plot = df_plot.groupby("ロットNo")[actual_col].mean().reset_index()
+                df_plot = df_plot.sort_values("ロットNo")
 
-                if st.button(f"{label} のロット推移グラフを描画", key=f"btn_line_{actual_col}"):
-                    st.session_state[key_line] = True
-
-                if st.session_state[key_line]:
-                    df_plot = df_filtered[["ロットNo", actual_col]].dropna().copy()
-                    df_plot = df_plot.groupby("ロットNo")[actual_col].mean().reset_index()
-                    df_plot = df_plot.sort_values("ロットNo")
-
-                    fig, ax = plt.subplots(figsize=(7, 3.5))
-                    ax.plot(df_plot["ロットNo"], df_plot[actual_col], marker='o')
-                    ax.set_xlabel("ロットNo")
-                    ax.set_ylabel(label)
-                    ax.set_title(f"{label} のロット推移")
-                    ax.grid(True)
-                    st.pyplot(fig)
+                fig, ax = plt.subplots(figsize=(7, 3.5))
+                ax.plot(df_plot["ロットNo"], df_plot[actual_col], marker='o')
+                ax.set_xlabel("ロットNo")
+                ax.set_ylabel(label)
+                ax.set_title(f"{label} のロット推移")
+                ax.grid(True)
+                st.pyplot(fig)
 else:
     st.info("左サイドバーから .xls, .xlsx, .xlsm ファイルをアップロードしてください。")

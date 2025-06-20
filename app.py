@@ -6,10 +6,12 @@ import matplotlib.pyplot as plt
 import matplotlib
 import os
 
+# フォント設定（エラー対策つき）
 try:
     matplotlib.rcParams['font.family'] = 'Yu Gothic'
 except:
     pass
+
 st.set_page_config(page_title="QC分析ツール", layout="wide")
 
 
@@ -46,20 +48,27 @@ def add_highlight_col(df):
     return df
 
 
+# --- キャッシュ付き読込関数（1. 読込高速化）---
+@st.cache_data(show_spinner="読み込み中…")
+def load_excel(uploaded_file, ext):
+    engine = "openpyxl" if ext in [".xlsx", ".xlsm"] else "xlrd"
+    with pd.ExcelFile(uploaded_file, engine=engine) as xls:
+        df = pd.read_excel(xls, sheet_name=0)
+        spec_df = pd.read_excel(xls, sheet_name="規格マスタ")
+    df.columns = df.columns.str.strip()
+    spec_df.columns = spec_df.columns.str.strip()
+    return df, spec_df
+
+
 # --- UI ---
 st.sidebar.header("① ファイル選択")
 uploaded = st.sidebar.file_uploader("Excelファイル (.xlsx, .xlsm, .xls)", type=["xls", "xlsx", "xlsm"])
 
 if uploaded:
-    with st.spinner("読み込み中…"):
-        ext = os.path.splitext(uploaded.name)[1].lower()
-        engine = "openpyxl" if ext in [".xlsx", ".xlsm"] else "xlrd"
-        with pd.ExcelFile(uploaded, engine=engine) as xls:
-            df = pd.read_excel(xls, sheet_name=0)
-            spec_df = pd.read_excel(xls, sheet_name="規格マスタ")
-        df.columns = df.columns.str.strip()
-        spec_df.columns = spec_df.columns.str.strip()
+    ext = os.path.splitext(uploaded.name)[1].lower()
+    df, spec_df = load_excel(uploaded, ext)
 
+    # 時間変換列
     if "水2L濾過時間" in df.columns:
         df["水2L濾過時間_sec"] = df["水2L濾過時間"].apply(parse_time)
         df["水2L濾過時間_mmss"] = df["水2L濾過時間_sec"].apply(to_minsec)
@@ -67,16 +76,18 @@ if uploaded:
     st.sidebar.header("② 製品フィルタ")
     products = sorted(df["製品名称"].dropna().unique())
     sel_products = st.sidebar.multiselect("製品を選択", products, default=products[:1])
-    df = df[df["製品名称"].isin(sel_products)]
 
     if not sel_products:
         st.warning("製品名が選択されていません。左のサイドバーから製品名を選択してください。")
     else:
+        # --- 2. フィルタ後に処理対象を絞る ---
+        df_filtered = df[df["製品名称"].isin(sel_products)]
+
         lot_mode = st.sidebar.checkbox("ロットNo別で集計・表示する")
         if lot_mode:
-            all_lots = sorted(df["ロットNo"].dropna().unique())
+            all_lots = sorted(df_filtered["ロットNo"].dropna().unique())
             selected_lots = st.sidebar.multiselect("対象ロットNoを選択", all_lots, default=[])
-            df = df[df["ロットNo"].isin(selected_lots)]
+            df_filtered = df_filtered[df_filtered["ロットNo"].isin(selected_lots)]
 
         st.sidebar.header("③ 規格値設定")
         specs = {}
@@ -110,30 +121,27 @@ if uploaded:
                             hi = st.number_input(f"{display_label} 上限", value=hi_val if pd.notna(hi_val) else None,
                                                  step=0.01, format="%.2f", key=f"{prod}_{col_actual}_hi")
 
-                        if col_actual in df.columns:
+                        if col_actual in df_filtered.columns:
                             specs[col_actual] = (lo, hi)
                             dynamic_targets.append((display_label, col_actual))
             else:
                 st.sidebar.warning("規格マスタに製品が見つかりません。")
 
-        # ✅ QC結果を再計算
-        df["QC結果"] = df.apply(qc_judge, axis=1, args=(specs,))
+        # ✅ QC判定（対象行のみ）
+        df_filtered["QC結果"] = df_filtered.apply(qc_judge, axis=1, args=(specs,))
 
         st.header("QC分析結果")
         if lot_mode:
             st.subheader("ロットNo別集計")
-            summary = df.groupby("ロットNo")["QC結果"].value_counts().unstack().fillna(0).astype(int)
+            summary = df_filtered.groupby("ロットNo")["QC結果"].value_counts().unstack().fillna(0).astype(int)
             st.dataframe(summary)
         else:
-            st.write(f"**NG件数：{(df['QC結果'] == 'NG').sum()} / {len(df)}**")
+            st.write(f"**NG件数：{(df_filtered['QC結果'] == 'NG').sum()} / {len(df_filtered)}**")
 
         st.subheader("詳細データ")
         show_only_ng = st.checkbox("⚠ NG（規格外）行のみ表示する", value=False)
 
-        df_view = df.copy()
-        if show_only_ng:
-            df_view = df_view[df_view["QC結果"] == "NG"]
-
+        df_view = df_filtered[df_filtered["QC結果"] == "NG"] if show_only_ng else df_filtered.copy()
         filtered_count = len(df_view)
         ng_count = (df_view["QC結果"] == "NG").sum()
         ng_rate = (ng_count / filtered_count * 100) if filtered_count > 0 else 0.0
@@ -142,15 +150,15 @@ if uploaded:
         df_view = add_highlight_col(df_view)
         st.dataframe(df_view, height=600, use_container_width=True)
 
-        csv = df.to_csv(index=False).encode("utf-8-sig")
+        csv = df_filtered.to_csv(index=False).encode("utf-8-sig")
         st.download_button("分析結果をCSVでダウンロード", csv, file_name="qc_result.csv", mime="text/csv")
 
         st.subheader("📊 統計・分布分析")
         for label, actual_col in dynamic_targets:
-            if actual_col not in df.columns or df[actual_col].dropna().empty:
+            if actual_col not in df_filtered.columns or df_filtered[actual_col].dropna().empty:
                 continue
 
-            values = df[actual_col].dropna()
+            values = df_filtered[actual_col].dropna()
             mean = values.mean()
             std = values.std()
             lower_3σ, upper_3σ = mean - 3 * std, mean + 3 * std
@@ -197,7 +205,7 @@ if uploaded:
         if lot_mode:
             st.subheader("📈 ロット順推移（折れ線グラフ）")
             for label, actual_col in dynamic_targets:
-                if actual_col not in df.columns or df[actual_col].dropna().empty:
+                if actual_col not in df_filtered.columns or df_filtered[actual_col].dropna().empty:
                     continue
 
                 key_line = f"show_line_{actual_col}"
@@ -208,7 +216,7 @@ if uploaded:
                     st.session_state[key_line] = True
 
                 if st.session_state[key_line]:
-                    df_plot = df[["ロットNo", actual_col]].dropna().copy()
+                    df_plot = df_filtered[["ロットNo", actual_col]].dropna().copy()
                     df_plot = df_plot.groupby("ロットNo")[actual_col].mean().reset_index()
                     df_plot = df_plot.sort_values("ロットNo")
 

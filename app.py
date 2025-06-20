@@ -7,42 +7,26 @@ import matplotlib
 import matplotlib.font_manager as fm
 import os
 import platform
-import shutil
 
-# --- 日本語フォント設定（Render / Windows 両対応） ---
+# --- 日本語フォント設定（Windowsのみ） ---
 def configure_japanese_font():
     global font_prop
     if platform.system() == "Windows":
         font_path = "C:/Windows/Fonts/msgothic.ttc"
-    else:
-        font_dir = "/tmp/fonts"
-        font_path = os.path.join(font_dir, "ipaexg.ttf")
-        if not os.path.exists(font_path):
-            import urllib.request
-            import zipfile
-            os.makedirs(font_dir, exist_ok=True)
-            zip_url = "https://moji.or.jp/wp-content/ipafont/IPAexfont/ipaexg00401.zip"
-            zip_path = os.path.join(font_dir, "ipa.zip")
-            urllib.request.urlretrieve(zip_url, zip_path)
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(font_dir)
-
-    if os.path.exists(font_path):
-        font_prop = fm.FontProperties(fname=font_path)
-        font_name = font_prop.get_name()
-        fm.fontManager.addfont(font_path)
-        matplotlib.rcParams['font.family'] = font_name
-        plt.rcParams['font.family'] = font_name
+        if os.path.exists(font_path):
+            font_prop = fm.FontProperties(fname=font_path)
+            font_name = font_prop.get_name()
+            fm.fontManager.addfont(font_path)
+            matplotlib.rcParams['font.family'] = font_name
+            plt.rcParams['font.family'] = font_name
+        else:
+            font_prop = fm.FontProperties()
+            matplotlib.rcParams['font.family'] = 'sans-serif'
+            plt.rcParams['font.family'] = 'sans-serif'
     else:
         font_prop = fm.FontProperties()
         matplotlib.rcParams['font.family'] = 'sans-serif'
         plt.rcParams['font.family'] = 'sans-serif'
-
-    try:
-        cache_dir = matplotlib.get_cachedir()
-        shutil.rmtree(cache_dir, ignore_errors=True)
-    except Exception:
-        pass
 
 configure_japanese_font()
 st.set_page_config(page_title="QC分析ツール", layout="wide")
@@ -192,39 +176,39 @@ if uploaded:
 
             st.markdown(f"### {label}")
             if "濾過時間" in label:
-                st.markdown(f"- 平均: **{to_minsec(mean)}**, 標準偏差: ±{int(std)} 秒")
-                st.markdown(f"- 3σ範囲: {to_minsec(lower_3σ)} ～ {to_minsec(upper_3σ)}")
+                st.markdown(f"- Ave: **{to_minsec(mean)}**, ±σ: ±{int(std)} 秒")
+                st.markdown(f"- 3σ range: {to_minsec(lower_3σ)} ～ {to_minsec(upper_3σ)}")
             else:
-                st.markdown(f"- 平均: **{mean:.2f}**, 標準偏差: **{std:.2f}**")
-                st.markdown(f"- 3σ範囲: {lower_3σ:.2f} ～ {upper_3σ:.2f}")
+                st.markdown(f"- Ave: **{mean:.2f}**, ±σ: **{std:.2f}**")
+                st.markdown(f"- 3σ range: {lower_3σ:.2f} ～ {upper_3σ:.2f}")
 
-            with st.expander(f"📐 {label} のx軸表示範囲を調整", expanded=False):
+            with st.expander(f"📐 {label} x-axis range", expanded=False):
                 default_min = min(values.min(), lower_3σ, lo if lo is not None else values.min())
                 default_max = max(values.max(), upper_3σ, hi if hi is not None else values.max())
-                x_min = st.number_input(f"{label} x軸最小", value=float(round(default_min - 0.5, 2)),
+                x_min = st.number_input(f"{label} x-min", value=float(round(default_min - 0.5, 2)),
                                         step=0.1, format="%.2f", key=f"{actual_col}_xmin")
-                x_max = st.number_input(f"{label} x軸最大", value=float(round(default_max + 0.5, 2)),
+                x_max = st.number_input(f"{label} x-max", value=float(round(default_max + 0.5, 2)),
                                         step=0.1, format="%.2f", key=f"{actual_col}_xmax")
 
             plt.rcParams['font.family'] = font_prop.get_name()
             fig, ax = plt.subplots(figsize=(7, 3.5))
             ax.hist(values, bins="auto", alpha=0.7, edgecolor='black')
-            ax.axvline(mean, color='blue', linestyle='--', label='平均')
+            ax.axvline(mean, color='blue', linestyle='--', label='Ave')
             ax.axvline(lower_3σ, color='orange', linestyle=':', label='-3σ')
             ax.axvline(upper_3σ, color='orange', linestyle=':', label='+3σ')
             if lo is not None:
-                ax.axvline(lo, color='red', linestyle='-', label='規格下限')
+                ax.axvline(lo, color='red', linestyle='-', label='Spec Low')
             if hi is not None:
-                ax.axvline(hi, color='red', linestyle='-', label='規格上限')
+                ax.axvline(hi, color='red', linestyle='-', label='Spec High')
             ax.set_xlim(x_min, x_max)
-            ax.set_title(f"{label} 分布（選択ロット）", fontproperties=font_prop)
+            ax.set_title(f"{label} Distribution (Selected Lots)", fontproperties=font_prop)
             ax.legend(prop=font_prop)
             ax.set_xlabel(label, fontproperties=font_prop)
-            ax.set_ylabel("件数", fontproperties=font_prop)
+            ax.set_ylabel("Count", fontproperties=font_prop)
             st.pyplot(fig)
 
         if lot_mode:
-            st.subheader("📈 ロット順推移（折れ線グラフ）")
+            st.subheader("📈 Lot Trend (Line Graph)")
             for label, actual_col in dynamic_targets:
                 if actual_col not in df_filtered.columns or df_filtered[actual_col].dropna().empty:
                     continue
@@ -236,9 +220,9 @@ if uploaded:
                 plt.rcParams['font.family'] = font_prop.get_name()
                 fig, ax = plt.subplots(figsize=(7, 3.5))
                 ax.plot(df_plot["ロットNo"], df_plot[actual_col], marker='o')
-                ax.set_xlabel("ロットNo", fontproperties=font_prop)
+                ax.set_xlabel("Lot No", fontproperties=font_prop)
                 ax.set_ylabel(label, fontproperties=font_prop)
-                ax.set_title(f"{label} のロット推移", fontproperties=font_prop)
+                ax.set_title(f"{label} Lot Trend", fontproperties=font_prop)
                 ax.grid(True)
                 st.pyplot(fig)
 else:

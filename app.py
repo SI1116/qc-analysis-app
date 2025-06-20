@@ -8,8 +8,9 @@ import matplotlib.font_manager as fm
 import os
 import platform
 
-# --- 日本語フォントの自動切替設定（Windows/Render両対応） ---
+# --- 日本語フォント設定（Render / Windows 両対応） ---
 def configure_japanese_font():
+    global font_prop
     if platform.system() == "Windows":
         font_path = "C:/Windows/Fonts/msgothic.ttc"
     else:
@@ -24,15 +25,16 @@ def configure_japanese_font():
             urllib.request.urlretrieve(zip_url, zip_path)
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(font_dir)
-
     if os.path.exists(font_path):
         fm.fontManager.addfont(font_path)
         font_name = fm.FontProperties(fname=font_path).get_name()
         matplotlib.rcParams['font.family'] = font_name
         plt.rcParams['font.family'] = font_name
+        font_prop = fm.FontProperties(fname=font_path)
     else:
         matplotlib.rcParams['font.family'] = 'sans-serif'
         plt.rcParams['font.family'] = 'sans-serif'
+        font_prop = None
 
 configure_japanese_font()
 st.set_page_config(page_title="QC分析ツール", layout="wide")
@@ -207,8 +209,10 @@ if uploaded:
             if hi is not None:
                 ax.axvline(hi, color='red', linestyle='-', label='規格上限')
             ax.set_xlim(x_min, x_max)
-            ax.set_title(f"{label} 分布（選択ロット）")
-            ax.legend()
+            ax.set_title(f"{label} 分布（選択ロット）", fontproperties=font_prop)
+            ax.legend(prop=font_prop)
+            ax.set_xlabel(label, fontproperties=font_prop)
+            ax.set_ylabel("件数", fontproperties=font_prop)
             st.pyplot(fig)
 
         if lot_mode:
@@ -223,10 +227,11 @@ if uploaded:
 
                 fig, ax = plt.subplots(figsize=(7, 3.5))
                 ax.plot(df_plot["ロットNo"], df_plot[actual_col], marker='o')
-                ax.set_xlabel("ロットNo")
-                ax.set_ylabel(label)
-                ax.set_title(f"{label} のロット推移")
+                ax.set_xlabel("ロットNo", fontproperties=font_prop)
+                ax.set_ylabel(label, fontproperties=font_prop)
+                ax.set_title(f"{label} のロット推移", fontproperties=font_prop)
                 ax.grid(True)
                 st.pyplot(fig)
 else:
     st.info("左サイドバーから .xls, .xlsx, .xlsm ファイルをアップロードしてください。")
+

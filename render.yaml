@@ -6,7 +6,14 @@ services:
       apt-get update && \
       apt-get install -y fonts-ipafont-gothic && \
       pip install -r requirements.txt
-    startCommand: streamlit run app.py --server.port 10000 --server.enableCORS false
+    startCommand: >
+      streamlit run app.py
+      --server.port 10000
+      --server.address 0.0.0.0
+      --server.enableCORS false
+      --server.enableXsrfProtection false
+      --browser.serverAddress 0.0.0.0
+      --browser.gatherUsageStats false
     envVars:
       - key: PYTHONUNBUFFERED
         value: "1"

@@ -1,20 +1,48 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import re
 import matplotlib.pyplot as plt
 import matplotlib
+import matplotlib.font_manager as fm
+import os
 import platform
-import os  # ← 忘れずにインポート
-import re
+import shutil
 
-# --- フォント設定（Render/Linux用とWindows用を自動切替） ---
-if platform.system() == "Windows":
-    matplotlib.rcParams["font.family"] = "MS Gothic"
-else:
-    matplotlib.rcParams["font.family"] = "IPAexGothic"
+# --- 日本語フォント設定（Render / Windows 両対応） ---
+def configure_japanese_font():
+    global font_prop
+    if platform.system() == "Windows":
+        font_path = "C:/Windows/Fonts/msgothic.ttc"
+    else:
+        font_dir = "/tmp/fonts"
+        font_path = os.path.join(font_dir, "ipaexg.ttf")
+        if not os.path.exists(font_path):
+            import urllib.request
+            import zipfile
+            os.makedirs(font_dir, exist_ok=True)
+            zip_url = "https://moji.or.jp/wp-content/ipafont/IPAexfont/ipaexg00401.zip"
+            zip_path = os.path.join(font_dir, "ipa.zip")
+            urllib.request.urlretrieve(zip_url, zip_path)
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(font_dir)
 
-plt.rcParams['font.family'] = matplotlib.rcParams["font.family"]
+    if os.path.exists(font_path):
+        fm.fontManager.addfont(font_path)
+        font_name = fm.FontProperties(fname=font_path).get_name()
+        matplotlib.rcParams['font.family'] = font_name
+        plt.rcParams['font.family'] = font_name
+        font_prop = fm.FontProperties(fname=font_path)
+    else:
+        matplotlib.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['font.family'] = 'sans-serif'
+        font_prop = fm.FontProperties()
 
+    cache_dir = matplotlib.get_cachedir()
+    shutil.rmtree(cache_dir, ignore_errors=True)
+    matplotlib.font_manager._rebuild()
+
+configure_japanese_font()
 st.set_page_config(page_title="QC分析ツール", layout="wide")
 
 # --- ユーティリティ関数 ---
@@ -49,6 +77,7 @@ def add_highlight_col(df):
         df["QC結果"] = df["QC結果"].apply(lambda x: "🟥 NG" if x == "NG" else "OK")
     return df
 
+# --- Excel読込関数 ---
 @st.cache_data(show_spinner="読み込み中…")
 def load_excel(uploaded_file, ext):
     engine = "openpyxl" if ext in [".xlsx", ".xlsm"] else "xlrd"
@@ -61,7 +90,7 @@ def load_excel(uploaded_file, ext):
 
 # --- UI ---
 st.sidebar.header("① ファイル選択")
-uploaded = st.sidebar.file_uploader("Excelファイル (.xls, .xlsx, .xlsm)", type=["xls", "xlsx", "xlsm"])
+uploaded = st.sidebar.file_uploader("Excelファイル (.xlsx, .xlsm, .xls)", type=["xls", "xlsx", "xlsm"])
 
 if uploaded:
     ext = os.path.splitext(uploaded.name)[1].lower()
@@ -176,6 +205,8 @@ if uploaded:
                 x_max = st.number_input(f"{label} x軸最大", value=float(round(default_max + 0.5, 2)),
                                         step=0.1, format="%.2f", key=f"{actual_col}_xmax")
 
+            # 再指定して確実に反映させる
+            plt.rcParams['font.family'] = font_prop.get_name()
             fig, ax = plt.subplots(figsize=(7, 3.5))
             ax.hist(values, bins="auto", alpha=0.7, edgecolor='black')
             ax.axvline(mean, color='blue', linestyle='--', label='平均')
@@ -186,10 +217,10 @@ if uploaded:
             if hi is not None:
                 ax.axvline(hi, color='red', linestyle='-', label='規格上限')
             ax.set_xlim(x_min, x_max)
-            ax.set_title(f"{label} 分布（選択ロット）")
-            ax.legend()
-            ax.set_xlabel(label)
-            ax.set_ylabel("件数")
+            ax.set_title(f"{label} 分布（選択ロット）", fontproperties=font_prop)
+            ax.legend(prop=font_prop)
+            ax.set_xlabel(label, fontproperties=font_prop)
+            ax.set_ylabel("件数", fontproperties=font_prop)
             st.pyplot(fig)
 
         if lot_mode:
@@ -202,14 +233,13 @@ if uploaded:
                 df_plot = df_plot.groupby("ロットNo")[actual_col].mean().reset_index()
                 df_plot = df_plot.sort_values("ロットNo")
 
+                plt.rcParams['font.family'] = font_prop.get_name()
                 fig, ax = plt.subplots(figsize=(7, 3.5))
                 ax.plot(df_plot["ロットNo"], df_plot[actual_col], marker='o')
-                ax.set_xlabel("ロットNo")
-                ax.set_ylabel(label)
-                ax.set_title(f"{label} のロット推移")
+                ax.set_xlabel("ロットNo", fontproperties=font_prop)
+                ax.set_ylabel(label, fontproperties=font_prop)
+                ax.set_title(f"{label} のロット推移", fontproperties=font_prop)
                 ax.grid(True)
                 st.pyplot(fig)
-
 else:
     st.info("左サイドバーから .xls, .xlsx, .xlsm ファイルをアップロードしてください。")
-

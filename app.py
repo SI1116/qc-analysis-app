@@ -7,6 +7,7 @@ import matplotlib
 import matplotlib.font_manager as fm
 import os
 import platform
+import shutil
 
 # --- 日本語フォント設定（Render / Windows 両対応） ---
 def configure_japanese_font():
@@ -25,6 +26,7 @@ def configure_japanese_font():
             urllib.request.urlretrieve(zip_url, zip_path)
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(font_dir)
+
     if os.path.exists(font_path):
         fm.fontManager.addfont(font_path)
         font_name = fm.FontProperties(fname=font_path).get_name()
@@ -36,8 +38,13 @@ def configure_japanese_font():
         plt.rcParams['font.family'] = 'sans-serif'
         font_prop = None
 
+    # --- フォントキャッシュ削除（重要） ---
+    cache_dir = matplotlib.get_cachedir()
+    shutil.rmtree(cache_dir, ignore_errors=True)
+
 configure_japanese_font()
 st.set_page_config(page_title="QC分析ツール", layout="wide")
+
 
 # --- ユーティリティ関数 ---
 def parse_time(t):
@@ -82,7 +89,8 @@ def load_excel(uploaded_file, ext):
     spec_df.columns = spec_df.columns.str.strip()
     return df, spec_df
 
-# --- UI表示 ---
+
+# --- UI ---
 st.sidebar.header("① ファイル選択")
 uploaded = st.sidebar.file_uploader("Excelファイル (.xlsx, .xlsm, .xls)", type=["xls", "xlsx", "xlsm"])
 
@@ -234,4 +242,3 @@ if uploaded:
                 st.pyplot(fig)
 else:
     st.info("左サイドバーから .xls, .xlsx, .xlsm ファイルをアップロードしてください。")
-
